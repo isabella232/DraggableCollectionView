@@ -17,5 +17,6 @@
 @optional
 
 - (BOOL)collectionView:(UICollectionView *)collectionView canMoveItemAtIndexPath:(NSIndexPath *)indexPath toIndexPath:(NSIndexPath *)toIndexPath;
+- (BOOL)collectionView:(UICollectionView *)collectionView shouldTouchBeginDrag:(UITouch*)touch atIndexPath:(NSIndexPath *)indexPath;
 
 @end

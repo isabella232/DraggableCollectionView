@@ -12,4 +12,8 @@
 @property (nonatomic, assign) BOOL draggable;
 @property (nonatomic, assign) UIEdgeInsets scrollingEdgeInsets;
 @property (nonatomic, assign) CGFloat scrollingSpeed;
+
+- (BOOL)beginDragAt:(NSIndexPath*)indexPath;
+- (void)endDrag;
+
 @end

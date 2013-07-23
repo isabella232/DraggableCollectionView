@@ -78,6 +78,82 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
     return self;
 }
 
+-(BOOL)beginDragAt:(NSIndexPath *)indexPath
+{
+    if (![(id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource
+          collectionView:self.collectionView
+          canMoveItemAtIndexPath:indexPath])
+    {
+        return NO;
+    }
+    
+    // Create mock cell to drag around
+    UICollectionViewCell *cell = [self.collectionView cellForItemAtIndexPath:indexPath];
+    cell.highlighted = NO;
+    [mockCell removeFromSuperview];
+    mockCell = [[UIImageView alloc] initWithFrame:cell.frame];
+    mockCell.image = [self imageFromCell:cell];
+    mockCenter = mockCell.center;
+    [self.collectionView addSubview:mockCell];
+    [UIView
+     animateWithDuration:0.3
+     animations:^{
+         mockCell.transform = CGAffineTransformMakeScale(1.1f, 1.1f);
+     }
+     completion:nil];
+    
+    // Start warping
+    lastIndexPath = indexPath;
+    self.layoutHelper.fromIndexPath = indexPath;
+    self.layoutHelper.hideIndexPath = indexPath;
+    self.layoutHelper.toIndexPath = indexPath;
+    [self.collectionView.collectionViewLayout invalidateLayout];
+
+    return YES;
+}
+
+-(void)endDrag
+{
+    NSIndexPath * from = self.layoutHelper.fromIndexPath;
+    NSIndexPath * to = self.layoutHelper.toIndexPath;
+    
+    if(from == nil || to == nil)
+    {
+        return;
+    }
+           
+    // Move the item
+    [self.collectionView performBatchUpdates:^{
+        [self.collectionView moveItemAtIndexPath:from toIndexPath:to];
+        self.layoutHelper.fromIndexPath = nil;
+        self.layoutHelper.toIndexPath = nil;
+    } completion:^(BOOL finished){
+        // Tell the data source to move the item
+        [(id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource collectionView:self.collectionView
+                                                                             moveItemAtIndexPath:from
+                                                                                     toIndexPath:to];
+    }];
+    
+    // Switch mock for cell
+    UICollectionViewLayoutAttributes *layoutAttributes = [self.collectionView layoutAttributesForItemAtIndexPath:self.layoutHelper.hideIndexPath];
+    [UIView
+     animateWithDuration:0.3
+     animations:^{
+         mockCell.center = layoutAttributes.center;
+         mockCell.transform = CGAffineTransformMakeScale(1.f, 1.f);
+     }
+     completion:^(BOOL finished) {
+         [mockCell removeFromSuperview];
+         mockCell = nil;
+         self.layoutHelper.hideIndexPath = nil;
+         [self.collectionView.collectionViewLayout invalidateLayout];
+     }];
+    
+    // Reset
+    [self invalidatesScrollTimer];
+    lastIndexPath = nil;
+}
+
 - (LSCollectionViewLayoutHelper *)layoutHelper
 {
     return [(id <UICollectionViewLayout_Warpable>)self.collectionView.collectionViewLayout layoutHelper];
@@ -134,6 +210,7 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer
 {
     if([gestureRecognizer isEqual:_panPressGestureRecognizer]) {
+        
         return self.layoutHelper.fromIndexPath != nil;
     }
     return YES;
@@ -141,16 +218,49 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
 {
-    if ([gestureRecognizer isEqual:_longPressGestureRecognizer]) {
+    if ([gestureRecognizer isEqual:_longPressGestureRecognizer])
+    {
         return [otherGestureRecognizer isEqual:_panPressGestureRecognizer];
     }
     
-    if ([gestureRecognizer isEqual:_panPressGestureRecognizer]) {
+    if ([gestureRecognizer isEqual:_panPressGestureRecognizer])
+    {
         return [otherGestureRecognizer isEqual:_longPressGestureRecognizer];
     }
     
     return NO;
 }
+
+// called before touchesBegan:withEvent: is called on the gesture recognizer for a new touch.
+// return NO to prevent the gesture recognizer from seeing this touch
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
+{
+    if([gestureRecognizer isEqual:_longPressGestureRecognizer])
+    {
+        return YES;
+    }
+    
+    if([gestureRecognizer isEqual:_panPressGestureRecognizer])
+    {
+        // Query datasource if they want to start drag from this touch
+        if ([self.collectionView.dataSource respondsToSelector:@selector(collectionView:shouldTouchBeginDrag:atIndexPath:)])
+        {
+            id<UICollectionViewDataSource_Draggable> source = (id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource;
+
+            CGPoint pt = [touch locationInView:self.collectionView];
+            NSIndexPath *indexPath = [self indexPathForItemClosestToPoint:pt];
+            
+            if(indexPath && [source collectionView:self.collectionView shouldTouchBeginDrag:touch atIndexPath:indexPath])
+            {
+                [self beginDragAt:indexPath];
+                return YES;
+            }
+        }
+    }
+    
+    return NO;
+}
+
 
 - (NSIndexPath *)indexPathForItemClosestToPoint:(CGPoint)point
 {
@@ -225,69 +335,20 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
             if (indexPath == nil) {
                 return;
             }
-            if (![(id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource
-                  collectionView:self.collectionView
-                  canMoveItemAtIndexPath:indexPath]) {
-                return;
-            }
-            // Create mock cell to drag around
-            UICollectionViewCell *cell = [self.collectionView cellForItemAtIndexPath:indexPath];
-            cell.highlighted = NO;
-            [mockCell removeFromSuperview];
-            mockCell = [[UIImageView alloc] initWithFrame:cell.frame];
-            mockCell.image = [self imageFromCell:cell];
-            mockCenter = mockCell.center;
-            [self.collectionView addSubview:mockCell];
-            [UIView
-             animateWithDuration:0.3
-             animations:^{
-                 mockCell.transform = CGAffineTransformMakeScale(1.1f, 1.1f);
-             }
-             completion:nil];
+            [self beginDragAt:indexPath];
             
-            // Start warping
-            lastIndexPath = indexPath;
-            self.layoutHelper.fromIndexPath = indexPath;
-            self.layoutHelper.hideIndexPath = indexPath;
-            self.layoutHelper.toIndexPath = indexPath;
-            [self.collectionView.collectionViewLayout invalidateLayout];
         } break;
+            
         case UIGestureRecognizerStateEnded:
-        case UIGestureRecognizerStateCancelled: {
-            if(self.layoutHelper.fromIndexPath == nil) {
-                return;
+        case UIGestureRecognizerStateCancelled:
+        {
+            if(self.layoutHelper.fromIndexPath != nil)
+            {
+                [self endDrag];
             }
-            // Tell the data source to move the item
-            [(id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource collectionView:self.collectionView
-                                                                              moveItemAtIndexPath:self.layoutHelper.fromIndexPath
-                                                                                      toIndexPath:self.layoutHelper.toIndexPath];
-            
-            // Move the item
-            [self.collectionView performBatchUpdates:^{
-                [self.collectionView moveItemAtIndexPath:self.layoutHelper.fromIndexPath toIndexPath:self.layoutHelper.toIndexPath];
-                self.layoutHelper.fromIndexPath = nil;
-                self.layoutHelper.toIndexPath = nil;
-            } completion:nil];
-            
-            // Switch mock for cell
-            UICollectionViewLayoutAttributes *layoutAttributes = [self.collectionView layoutAttributesForItemAtIndexPath:self.layoutHelper.hideIndexPath];
-            [UIView
-             animateWithDuration:0.3
-             animations:^{
-                 mockCell.center = layoutAttributes.center;
-                 mockCell.transform = CGAffineTransformMakeScale(1.f, 1.f);
-             }
-             completion:^(BOOL finished) {
-                 [mockCell removeFromSuperview];
-                 mockCell = nil;
-                 self.layoutHelper.hideIndexPath = nil;
-                 [self.collectionView.collectionViewLayout invalidateLayout];
-             }];
-            
-            // Reset
-            [self invalidatesScrollTimer];
-            lastIndexPath = nil;
-        } break;
+            break;
+        }
+
         default: break;
     }
 }
@@ -314,49 +375,71 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
 
 - (void)handlePanGesture:(UIPanGestureRecognizer *)sender
 {
-    if(sender.state == UIGestureRecognizerStateChanged) {
-        // Move mock to match finger
-        fingerTranslation = [sender translationInView:self.collectionView];
-        mockCell.center = _CGPointAdd(mockCenter, fingerTranslation);
-        
-        // Scroll when necessary
-        if (canScroll) {
-            UICollectionViewFlowLayout *scrollLayout = (UICollectionViewFlowLayout*)self.collectionView.collectionViewLayout;
-            if([scrollLayout scrollDirection] == UICollectionViewScrollDirectionVertical) {
-                if (mockCell.center.y < (CGRectGetMinY(self.collectionView.bounds) + self.scrollingEdgeInsets.top)) {
-                    [self setupScrollTimerInDirection:_ScrollingDirectionUp];
-                }
-                else {
-                    if (mockCell.center.y > (CGRectGetMaxY(self.collectionView.bounds) - self.scrollingEdgeInsets.bottom)) {
-                        [self setupScrollTimerInDirection:_ScrollingDirectionDown];
+    switch (sender.state)
+    {
+        case UIGestureRecognizerStateChanged:
+        {
+            // Move mock to match finger
+            fingerTranslation = [sender translationInView:self.collectionView];
+            mockCell.center = _CGPointAdd(mockCenter, fingerTranslation);
+            
+            // Scroll when necessary
+            if (canScroll) {
+                UICollectionViewFlowLayout *scrollLayout = (UICollectionViewFlowLayout*)self.collectionView.collectionViewLayout;
+                if([scrollLayout scrollDirection] == UICollectionViewScrollDirectionVertical) {
+                    if (mockCell.center.y < (CGRectGetMinY(self.collectionView.bounds) + self.scrollingEdgeInsets.top)) {
+                        [self setupScrollTimerInDirection:_ScrollingDirectionUp];
                     }
                     else {
-                        [self invalidatesScrollTimer];
+                        if (mockCell.center.y > (CGRectGetMaxY(self.collectionView.bounds) - self.scrollingEdgeInsets.bottom)) {
+                            [self setupScrollTimerInDirection:_ScrollingDirectionDown];
+                        }
+                        else {
+                            [self invalidatesScrollTimer];
+                        }
                     }
                 }
-            }
-            else {
-                if (mockCell.center.x < (CGRectGetMinX(self.collectionView.bounds) + self.scrollingEdgeInsets.left)) {
-                    [self setupScrollTimerInDirection:_ScrollingDirectionLeft];
-                } else {
-                    if (mockCell.center.x > (CGRectGetMaxX(self.collectionView.bounds) - self.scrollingEdgeInsets.right)) {
-                        [self setupScrollTimerInDirection:_ScrollingDirectionRight];
+                else {
+                    if (mockCell.center.x < (CGRectGetMinX(self.collectionView.bounds) + self.scrollingEdgeInsets.left)) {
+                        [self setupScrollTimerInDirection:_ScrollingDirectionLeft];
                     } else {
-                        [self invalidatesScrollTimer];
+                        if (mockCell.center.x > (CGRectGetMaxX(self.collectionView.bounds) - self.scrollingEdgeInsets.right)) {
+                            [self setupScrollTimerInDirection:_ScrollingDirectionRight];
+                        } else {
+                            [self invalidatesScrollTimer];
+                        }
                     }
                 }
             }
+            
+            // Avoid warping a second time while scrolling
+            if (scrollingDirection > _ScrollingDirectionUnknown) {
+                return;
+            }
+            
+            // Warp item to finger location
+            CGPoint point = [sender locationInView:self.collectionView];
+            NSIndexPath *indexPath = [self indexPathForItemClosestToPoint:point];
+            [self warpToIndexPath:indexPath];
+            
+            break;
         }
         
-        // Avoid warping a second time while scrolling
-        if (scrollingDirection > _ScrollingDirectionUnknown) {
-            return;
+        case UIGestureRecognizerStateCancelled:
+        case UIGestureRecognizerStateEnded:
+        {
+            if(self.layoutHelper.fromIndexPath != nil)
+            {
+                [self endDrag];
+            }
+            break;
         }
-        
-        // Warp item to finger location
-        CGPoint point = [sender locationInView:self.collectionView];
-        NSIndexPath *indexPath = [self indexPathForItemClosestToPoint:point];
-        [self warpToIndexPath:indexPath];
+         
+            
+        default:
+        {
+            break;
+        }
     }
 }
 

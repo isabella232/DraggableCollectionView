@@ -20,6 +20,16 @@
     return helper;
 }
 
+- (BOOL)beginDragAt:(NSIndexPath*)indexPath
+{
+    return [[self getHelper] beginDragAt:indexPath];
+}
+
+- (void)endDrag
+{
+    [[self getHelper] endDrag];
+}
+
 - (BOOL)draggable
 {
     return [self getHelper].enabled;
