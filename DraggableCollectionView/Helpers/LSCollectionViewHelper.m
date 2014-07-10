@@ -80,6 +80,10 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
 
 -(BOOL)beginDragAt:(NSIndexPath *)indexPath
 {
+    if (self.layoutHelper.fromIndexPath != nil) {
+        return NO;
+    }
+
     if (![(id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource
           collectionView:self.collectionView
           canMoveItemAtIndexPath:indexPath])
@@ -248,14 +252,14 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
             id<UICollectionViewDataSource_Draggable> source = (id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource;
 
             CGPoint pt = [touch locationInView:self.collectionView];
-            NSIndexPath *indexPath = [self indexPathForItemClosestToPoint:pt];
+            NSIndexPath *indexPath = [self.collectionView indexPathForItemAtPoint:pt];
             
             if(indexPath && [source collectionView:self.collectionView shouldTouchBeginDrag:touch atIndexPath:indexPath])
             {
                 [self beginDragAt:indexPath];
-                return YES;
             }
         }
+        return YES;
     }
     
     return NO;
@@ -328,7 +332,7 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
         return;
     }
     
-    NSIndexPath *indexPath = [self indexPathForItemClosestToPoint:[sender locationInView:self.collectionView]];
+    NSIndexPath *indexPath = [self.collectionView indexPathForItemAtPoint:[sender locationInView:self.collectionView]];
     
     switch (sender.state) {
         case UIGestureRecognizerStateBegan: {
