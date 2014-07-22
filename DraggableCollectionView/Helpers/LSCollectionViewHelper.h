@@ -18,6 +18,7 @@
 @property (nonatomic, readonly) UIGestureRecognizer *panPressGestureRecognizer;
 @property (nonatomic, assign) UIEdgeInsets scrollingEdgeInsets;
 @property (nonatomic, assign) CGFloat scrollingSpeed;
+@property (nonatomic, assign) BOOL dragOnTouch;
 @property (nonatomic, assign) BOOL enabled;
 
 @end

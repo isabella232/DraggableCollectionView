@@ -40,6 +40,16 @@
     [self getHelper].enabled = draggable;
 }
 
+- (BOOL)dragOnTouch
+{
+    return [self getHelper].dragOnTouch;
+}
+
+- (void)setDragOnTouch:(BOOL)dragOnTouch
+{
+    [self getHelper].dragOnTouch = dragOnTouch;
+}
+
 - (UIEdgeInsets)scrollingEdgeInsets
 {
     return [self getHelper].scrollingEdgeInsets;

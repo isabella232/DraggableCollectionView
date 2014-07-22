@@ -58,12 +58,6 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
         _longPressGestureRecognizer = [[UILongPressGestureRecognizer alloc]
                                        initWithTarget:self
                                        action:@selector(handleLongPressGesture:)];
-        if([self.collectionView.dataSource respondsToSelector:@selector(collectionView:shouldTouchBeginDrag:atIndexPath:)]) {
-            // Instead of starting the drag on a long press, start the drag based
-            // on delegate respond to first touch.
-            ((UILongPressGestureRecognizer*)_longPressGestureRecognizer).minimumPressDuration = 0.05;
-            _longPressGestureRecognizer.delegate = self;
-        }
         [_collectionView addGestureRecognizer:_longPressGestureRecognizer];
         
         _panPressGestureRecognizer = [[UIPanGestureRecognizer alloc]
@@ -186,6 +180,25 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
     }
 }
 
+- (void)setDragOnTouch:(BOOL)dragOnTouch
+{
+    if (_dragOnTouch != dragOnTouch) {
+        _dragOnTouch = dragOnTouch;
+
+        UILongPressGestureRecognizer* gestureRecognizer = (UILongPressGestureRecognizer*)_longPressGestureRecognizer;
+        if (dragOnTouch) {
+            // Instead of starting the drag on a long press, start the drag based
+            // on delegate respond to first touch.
+            gestureRecognizer.minimumPressDuration = 0.05;
+            gestureRecognizer.delegate = self;
+        }
+        else {
+            gestureRecognizer.minimumPressDuration = 0.5;
+            gestureRecognizer.delegate = nil;
+        }
+    }
+}
+
 - (void)setEnabled:(BOOL)enabled
 {
     _enabled = enabled;
@@ -245,16 +258,25 @@ typedef NS_ENUM(NSInteger, _ScrollingDirection) {
 // return NO to prevent the gesture recognizer from seeing this touch
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
-    if ([gestureRecognizer isEqual:_longPressGestureRecognizer]
-        && [self.collectionView.dataSource respondsToSelector:@selector(collectionView:shouldTouchBeginDrag:atIndexPath:)]) {
-        id<UICollectionViewDataSource_Draggable> dataSource = (id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource;
+    id<UICollectionViewDataSource_Draggable> dataSource = (id<UICollectionViewDataSource_Draggable>)self.collectionView.dataSource;
+    if (self.dragOnTouch
+        && [gestureRecognizer isEqual:_longPressGestureRecognizer]
+        && [dataSource respondsToSelector:@selector(collectionView:canMoveItemAtIndexPath:)]) {
+
         CGPoint pt = [touch locationInView:self.collectionView];
         NSIndexPath *indexPath = [self.collectionView indexPathForItemAtPoint:pt];
 
-        // Effectively will call beginDragAt in handleLongPressGesture: since the
-        // minimumPressDuration is so short.
-        return (indexPath
-                && [dataSource collectionView:self.collectionView shouldTouchBeginDrag:touch atIndexPath:indexPath]);
+        if (indexPath) {
+            if ([dataSource collectionView:self.collectionView canMoveItemAtIndexPath:indexPath]) {
+                // Allow granular control on which taps will trigger.
+                if ([dataSource respondsToSelector:@selector(collectionView:shouldTouchBeginDrag:atIndexPath:)]) {
+                    return [dataSource collectionView:self.collectionView shouldTouchBeginDrag:touch atIndexPath:indexPath];
+                } else {
+                    return YES;
+                }
+            }
+        }
+        return NO;
     }
 
     return YES;

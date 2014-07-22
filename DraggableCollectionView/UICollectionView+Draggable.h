@@ -10,6 +10,7 @@
 @interface UICollectionView (Draggable)
 
 @property (nonatomic, assign) BOOL draggable;
+@property (nonatomic, assign) BOOL dragOnTouch;
 @property (nonatomic, assign) UIEdgeInsets scrollingEdgeInsets;
 @property (nonatomic, assign) CGFloat scrollingSpeed;
 
